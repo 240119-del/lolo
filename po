@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Моя облачная проект</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 50px;
+            background-color: #f4f4f9;
+        }
+        .form-container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 300px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4f46e5;
+            border: none;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:disabled {
+            background: #a5a2e1;
+        }
+    </style>
+</head>
+<body>
+
+<div class="form-container">
+    <h3>Отправить данные</h3>
+    <form id="feedbackForm">
+        <input type="text" id="username" placeholder="Ваше имя" required>
+        <input type="email" id="userEmail" placeholder="Ваш Email" required>
+        <button type="submit" id="submitBtn">Отправить в облако</button>
+    </form>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDCGC6V5UMwMZVA5TxtjGBCyOkuSjfKxbw",
+        authDomain: "po241-24aa4.firebaseapp.com",
+        projectId: "po241-24aa4",
+        storageBucket: "po241-24aa4.firebasestorage.app",
+        messagingSenderId: "338821165586",
+        appId: "1:338821165586:web:fc58d92d3b5dab58c7decb",
+        measurementId: "G-KW8702KMGN"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const feedbackForm = document.getElementById("feedbackForm");
+    const submitBtn = document.getElementById("submitBtn");
+
+    feedbackForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        
+        // Деактивируем кнопку, чтобы избежать дублей при нажатии
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Отправка...";
+
+        // Исправлено: ID должен точно совпадать с HTML
+        const nameInput = document.getElementById("username").value;
+        const emailInput = document.getElementById("userEmail").value;
+
+        try {
+            await addDoc(collection(db, "requests"), {
+                name: nameInput,
+                email: emailInput,
+                // Лучше использовать серверное время Firebase вместо локального
+                timestamp: serverTimestamp() 
+            });
+
+            alert("Готово! Данные сохранены в Firebase.");
+            feedbackForm.reset();
+        } catch (error) {
+            console.error("Ошибка записи: ", error);
+            alert("Ошибка при отправке. Проверьте правила доступа (Rules) в Firebase Console.");
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = "Отправить в облако";
+        }
+    });
+</script>
+
+</body>
+</html>
