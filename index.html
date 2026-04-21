@@ -111,18 +111,27 @@ const supabase = createClient(
 );
 
 // ---------------- GOOGLE LOGIN ----------------
-window.loginWithGoogle = async () => {
+async function loginWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google"
-    })
+    });
 
     if (error) {
-        alert("Ошибка входа через Google")
-        console.log(error)
+        alert("Ошибка входа через Google");
+        console.log(error);
     }
 }
 
-document.getElementById("googleLoginBtn").onclick = loginWithGoogle;
+// безопасное подключение кнопки
+window.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("googleLoginBtn");
+
+    if (btn) {
+        btn.addEventListener("click", loginWithGoogle);
+    } else {
+        console.log("Кнопка googleLoginBtn не найдена");
+    }
+});
 
 // ---------------- FIREBASE LIKE ----------------
 window.processLike = async (id) => {
