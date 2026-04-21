@@ -64,7 +64,12 @@
 </head>
 <body>
 
+<!-- 🔥 ДОБАВЛЕНА КНОПКА GOOGLE LOGIN -->
 <div class="container">
+    <button id="googleLoginBtn" class="mainBtn" style="margin-bottom:10px; background:#db4437;">
+        Войти через Google
+    </button>
+
     <h3>Нашем управлением данными</h3>
     <input type="text" id="name" placeholder="Имя профиля">
     <input type="email" id="email" placeholder="Рабочий Email">
@@ -74,13 +79,18 @@
 <div id="feed" style="width: 100%; max-width: 500px;"></div>
 
 <script type="module">
+
+// 🔥 FIREBASE
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
 import {
     getFirestore, collection, addDoc, query, onSnapshot,
     serverTimestamp, updateDoc, doc, increment, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
+// 🔥 SUPABASE ДОБАВЛЕН
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
 
+// Firebase config
 const firebaseConfig = { 
     apiKey: "AIzaSyD3RiTgLeqLdQWhMG-zh43CZbqP-72cVdk", 
     authDomain: "subd-bcd5b.firebaseapp.com", 
@@ -94,7 +104,27 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// 🔥 SUPABASE INIT (вставь свои ключи)
+const supabase = createClient(
+    "YOUR_SUPABASE_URL",
+    "YOUR_SUPABASE_ANON_KEY"
+);
 
+// ---------------- GOOGLE LOGIN ----------------
+window.loginWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google"
+    })
+
+    if (error) {
+        alert("Ошибка входа через Google")
+        console.log(error)
+    }
+}
+
+document.getElementById("googleLoginBtn").onclick = loginWithGoogle;
+
+// ---------------- FIREBASE LIKE ----------------
 window.processLike = async (id) => {
     const docRef = doc(db, "requests", id);
     try {
@@ -105,7 +135,7 @@ window.processLike = async (id) => {
     }
 };
 
-
+// ---------------- ADD POST ----------------
 document.getElementById('mainBtn').onclick = async () => {
     const btn = document.getElementById('mainBtn');
     btn.disabled = true;
@@ -128,7 +158,7 @@ document.getElementById('mainBtn').onclick = async () => {
     btn.disabled = false;
 };
 
-
+// ---------------- REALTIME FEED ----------------
 const q = query(collection(db, "requests"), orderBy("timestamp", "desc"));
 
 onSnapshot(q, (snapshot) => {
@@ -149,13 +179,8 @@ onSnapshot(q, (snapshot) => {
         `;
     });
 });
-    import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-
-async function loginWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google'
-  })
-}
 </script>
+
+</body>
+</html>
