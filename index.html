@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>BaaS</title>
+    <title>BaaS + Study Timer</title>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -20,6 +20,19 @@
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
+        /* Стили для новых индикаторов */
+        .status-bar {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .online-count { color: #28a745; }
+        .study-timer { color: #007bff; }
+
         input {
             width: 100%;
             padding: 12px;
@@ -64,7 +77,11 @@
 </head>
 <body>
 
-<!-- 🔥 ДОБАВЛЕНА КНОПКА GOOGLE LOGIN -->
+<div class="status-bar">
+    <span class="online-count">Онлайн: <span id="onlineNum">0</span></span>
+    <span class="study-timer">В учебе: <span id="timerVal">0</span> сек.</span>
+</div>
+
 <div class="container">
     <button id="googleLoginBtn" class="mainBtn" style="margin-bottom:10px; background:#db4437;">
         Войти через Google
@@ -87,10 +104,9 @@ import {
     serverTimestamp, updateDoc, doc, increment, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
-// 🔥 SUPABASE ДОБАВЛЕН
+// 🔥 SUPABASE
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
 
-// Firebase config
 const firebaseConfig = { 
     apiKey: "AIzaSyD3RiTgLeqLdQWhMG-zh43CZbqP-72cVdk", 
     authDomain: "subd-bcd5b.firebaseapp.com", 
@@ -104,33 +120,69 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 🔥 SUPABASE INIT (вставь свои ключи)
 const supabase = createClient(
     "https://ghlijinxmngywoyxtgzs.supabase.co",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdobGlqaW54bW5neXdveXh0Z3pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3ODQ0OTIsImV4cCI6MjA5MTM2MDQ5Mn0.cocCcMcygzKHqeHx9QaFsdaahUcS8mTKXGq9qBiUH6k"
 );
+
+// --- ЛОГИКА ТАЙМЕРА И ОНЛАЙНА ---
+let totalSeconds = 0;
+let currentUser = null;
+
+// Функция отслеживания онлайн-статуса
+async function trackPresence(user) {
+    const channel = supabase.channel('online-users');
+    
+    channel
+        .on('presence', { event: 'sync' }, () => {
+            const state = channel.presenceState();
+            document.getElementById('onlineNum').innerText = Object.keys(state).length;
+        })
+        .subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await channel.track({ user: user.email, online_at: new Date() });
+            }
+        });
+}
+
+// Счетчик времени
+setInterval(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        totalSeconds++;
+        document.getElementById('timerVal').innerText = totalSeconds;
+        
+        // Каждые 10 секунд сохраняем в базу Supabase
+        if (totalSeconds % 10 === 0) {
+            await supabase.from('study_users').upsert({ 
+                id: session.user.id, 
+                email: session.user.email, 
+                seconds_spent: totalSeconds 
+            });
+        }
+    }
+}, 1000);
 
 // ---------------- GOOGLE LOGIN ----------------
 async function loginWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google"
     });
-
-    if (error) {
-        alert("Ошибка входа через Google");
-        console.log(error);
-    }
+    if (error) { alert("Ошибка входа"); console.log(error); }
 }
 
-// безопасное подключение кнопки
-window.addEventListener("DOMContentLoaded", () => {
-    const btn = document.getElementById("googleLoginBtn");
-
-    if (btn) {
-        btn.addEventListener("click", loginWithGoogle);
-    } else {
-        console.log("Кнопка googleLoginBtn не найдена");
+// Проверка сессии при загрузке
+window.addEventListener("DOMContentLoaded", async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        trackPresence(session.user);
+        // Загружаем сохраненное время из базы
+        const { data } = await supabase.from('study_users').select('seconds_spent').eq('id', session.user.id).single();
+        if (data) totalSeconds = data.seconds_spent;
     }
+
+    const btn = document.getElementById("googleLoginBtn");
+    if (btn) btn.addEventListener("click", loginWithGoogle);
 });
 
 // ---------------- FIREBASE LIKE ----------------
@@ -144,7 +196,7 @@ window.processLike = async (id) => {
     }
 };
 
-// ---------------- ADD POST ----------------
+// ---------------- ADD POST (FIREBASE) ----------------
 document.getElementById('mainBtn').onclick = async () => {
     const btn = document.getElementById('mainBtn');
     btn.disabled = true;
@@ -163,17 +215,15 @@ document.getElementById('mainBtn').onclick = async () => {
         alert("Ошибка: данные не отправлены");
         console.error(e);
     }
-
     btn.disabled = false;
 };
 
-// ---------------- REALTIME FEED ----------------
+// ---------------- REALTIME FEED (FIREBASE) ----------------
 const q = query(collection(db, "requests"), orderBy("timestamp", "desc"));
 
 onSnapshot(q, (snapshot) => {
     const feed = document.getElementById('feed');
     feed.innerHTML = "";
-
     snapshot.forEach((docItem) => {
         const data = docItem.data();
         feed.innerHTML += `
@@ -190,6 +240,5 @@ onSnapshot(q, (snapshot) => {
 });
 
 </script>
-
 </body>
 </html>
