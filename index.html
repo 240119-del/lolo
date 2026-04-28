@@ -20,7 +20,6 @@
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
-        /* Стили для новых индикаторов */
         .status-bar {
             width: 100%;
             max-width: 500px;
@@ -127,9 +126,7 @@ const supabase = createClient(
 
 // --- ЛОГИКА ТАЙМЕРА И ОНЛАЙНА ---
 let totalSeconds = 0;
-let currentUser = null;
 
-// Функция отслеживания онлайн-статуса
 async function trackPresence(user) {
     const channel = supabase.channel('online-users');
     
@@ -145,14 +142,12 @@ async function trackPresence(user) {
         });
 }
 
-// Счетчик времени
 setInterval(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
         totalSeconds++;
         document.getElementById('timerVal').innerText = totalSeconds;
         
-        // Каждые 10 секунд сохраняем в базу Supabase
         if (totalSeconds % 10 === 0) {
             await supabase.from('study_users').upsert({ 
                 id: session.user.id, 
@@ -163,20 +158,22 @@ setInterval(async () => {
     }
 }, 1000);
 
-// ---------------- GOOGLE LOGIN ----------------
+// ---------------- GOOGLE LOGIN (ИСПРАВЛЕНО) ----------------
 async function loginWithGoogle() {
     const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google"
+        provider: "google",
+        options: {
+            // Эта строка исправляет 404 и ошибку редиректа
+            redirectTo: window.location.origin + window.location.pathname
+        }
     });
     if (error) { alert("Ошибка входа"); console.log(error); }
 }
 
-// Проверка сессии при загрузке
 window.addEventListener("DOMContentLoaded", async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
         trackPresence(session.user);
-        // Загружаем сохраненное время из базы
         const { data } = await supabase.from('study_users').select('seconds_spent').eq('id', session.user.id).single();
         if (data) totalSeconds = data.seconds_spent;
     }
