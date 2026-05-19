@@ -2,131 +2,127 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>BaaS + Study Timer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Monitor Pro</title>
     <style>
         body {
-            font-family: 'Inter', sans-serif;
-            background: #f4f7f6;
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0d0e12;
+            color: #ffffff;
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 20px;
+            margin: 0;
         }
-        .container {
+        .layout {
+            display: flex;
+            gap: 20px;
             width: 100%;
-            max-width: 500px;
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            max-width: 1000px;
+            margin-top: 20px;
         }
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+        }
+        .sidebar, .main-content {
+            background: #12131a;
+            border: 1px solid #1f222e;
+            padding: 25px;
+            border-radius: 16px;
+        }
+        .sidebar { flex: 1; min-width: 280px; }
+        .main-content { flex: 2; }
+        
         .status-bar {
             width: 100%;
-            max-width: 500px;
+            max-width: 1000px;
             display: flex;
             justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
-        }
-        .online-count { color: #28a745; }
-        .study-timer { color: #007bff; }
-
-        input {
-            width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            background: #12131a;
+            padding: 15px 25px;
+            border-radius: 12px;
+            border: 1px solid #1f222e;
             box-sizing: border-box;
         }
-        button.mainBtn {
-            background: #007bff;
+        .online-count { color: #10b981; }
+        .study-timer { color: #8b5cf6; }
+
+        .btn {
+            background: #8b5cf6;
             color: white;
             border: none;
-            padding: 12px;
-            border-radius: 6px;
+            padding: 12px 20px;
+            border-radius: 8px;
             width: 100%;
             cursor: pointer;
-            transition: 0.3s;
+            font-weight: 600;
+            transition: 0.2s;
+            margin-bottom: 10px;
         }
-        .post {
-            background: #fff;
-            border: 1px solid #eee;
-            padding: 15px;
-            margin-top: 15px;
-            border-radius: 8px;
-            position: relative;
+        .btn:hover { opacity: 0.9; }
+        .btn-google { background: #db4437; }
+        .btn-break { background: #ef4444; }
+        .btn-success { background: #10b981; }
+
+        /* Таблица Лидерборда */
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #1f222e;
         }
-        .like-btn {
-            cursor: pointer;
-            border: none;
-            background: #8f9faa;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            transition: 0.25s;
+        .leaderboard-item:last-child { border: none; }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
         }
-        .time {
-            font-size: 11px;
-            color: #999;
-            float: right;
-        }
+        .status-online { background: #10b981; }
+        .status-break { background: #f59e0b; }
+        .status-offline { background: #6b7280; }
     </style>
 </head>
 <body>
 
 <div class="status-bar">
-    <span class="online-count">Онлайн: <span id="onlineNum">0</span></span>
-    <span class="study-timer">В учебе: <span id="timerVal">0</span> сек.</span>
+    <span class="online-count">● В сети: <span id="onlineNum">0</span></span>
+    <span class="study-timer">Таймер: <span id="timerVal">0</span> сек.</span>
 </div>
 
-<div class="container">
-    <button id="googleLoginBtn" class="mainBtn" style="margin-bottom:10px; background:#db4437;">
-        Войти через Google
-    </button>
+<div class="layout">
+    <div class="sidebar">
+        <h3 style="margin-top: 0; color: #a78bfa;">ТОП СТУДЕНТОВ</h3>
+        <div id="leaderboard">Загрузка рейтинга...</div>
+    </div>
 
-    <h3>Нашем управлением данными</h3>
-    <input type="text" id="name" placeholder="Имя профиля">
-    <input type="email" id="email" placeholder="Рабочий Email">
-    <button id="mainBtn">Опубликовать в облако</button>
+    <div class="main-content">
+        <button id="googleLoginBtn" class="btn btn-google">Войти через Google</button>
+        
+        <div id="controls" style="display: none; margin-top: 20px;">
+            <p id="welcomeMsg" style="font-size: 18px; font-weight: bold;"></p>
+            <button id="statusBtn" class="btn btn-break">Перерыв</button>
+        </div>
+    </div>
 </div>
-
-<div id="feed" style="width: 100%; max-width: 500px;"></div>
 
 <script type="module">
-
-// 🔥 FIREBASE
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import {
-    getFirestore, collection, addDoc, query, onSnapshot,
-    serverTimestamp, updateDoc, doc, increment, orderBy
-} from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
-
-// 🔥 SUPABASE
+// 🔥 НАСТРОЙКИ SUPABASE (Замени на свои!)
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
+const SUPABASE_URL = "https://ghlijinxmngywoyxtgzs.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdobGlqaW54bW5neXdveXh0Z3pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3ODQ0OTIsImV4cCI6MjA5MTM2MDQ5Mn0.cocCcMcygzKHqeHx9QaFsdaahUcS8mTKXGq9qBiUH6k";
 
-const firebaseConfig = { 
-    apiKey: "AIzaSyD3RiTgLeqLdQWhMG-zh43CZbqP-72cVdk", 
-    authDomain: "subd-bcd5b.firebaseapp.com", 
-    projectId: "subd-bcd5b", 
-    storageBucket: "subd-bcd5b.firebasestorage.app", 
-    messagingSenderId: "215723686205", 
-    appId: "1:215723686205:web:e19aba7cb3a1b168822d54",
-    measurementId: "G-9TE97NWMB9"
-};
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-const supabase = createClient(
-    "https://ghlijinxmngywoyxtgzs.supabase.co",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdobGlqaW54bW5neXdveXh0Z3pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3ODQ0OTIsImV4cCI6MjA5MTM2MDQ5Mn0.cocCcMcygzKHqeHx9QaFsdaahUcS8mTKXGq9qBiUH6k"
-);
-
-// --- ЛОГИКА ТАЙМЕРА И ОНЛАЙНА ---
 let totalSeconds = 0;
+let isBreak = false;
+let currentUser = null;
 
+// --- ТРЕКИНГ ПРИСУТСТВИЯ (REALTIME) ---
 async function trackPresence(user) {
     const channel = supabase.channel('online-users');
     
@@ -142,100 +138,109 @@ async function trackPresence(user) {
         });
 }
 
+// --- ЛОГИКА ТАЙМЕРА ---
 setInterval(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
+    if (currentUser && !isBreak) {
         totalSeconds++;
         document.getElementById('timerVal').innerText = totalSeconds;
         
+        // Каждые 10 секунд сохраняем прогресс в базу данных
         if (totalSeconds % 10 === 0) {
-            await supabase.from('study_users').upsert({ 
-                id: session.user.id, 
-                email: session.user.email, 
-                seconds_spent: totalSeconds 
+            await supabase.from('profiles').upsert({ 
+                id: currentUser.id, 
+                full_name: currentUser.user_metadata.full_name || currentUser.email,
+                total_study_time: totalSeconds,
+                current_status: 'online'
             });
         }
     }
 }, 1000);
 
-// ---------------- GOOGLE LOGIN (ИСПРАВЛЕНО) ----------------
+// --- ОБНОВЛЕНИЕ СТАТУСА (ПЕРЕРЫВ / ПРОДОЛЖИТЬ) ---
+document.getElementById('statusBtn').onclick = async () => {
+    isBreak = !isBreak;
+    const btn = document.getElementById('statusBtn');
+    const newStatus = isBreak ? 'break' : 'online';
+    
+    if (isBreak) {
+        btn.innerText = "Продолжить усердно учиться";
+        btn.className = "btn btn-success";
+    } else {
+        btn.innerText = "Перерыв";
+        btn.className = "btn btn-break";
+    }
+
+    if (currentUser) {
+        await supabase.from('profiles').update({ current_status: newStatus }).eq('id', currentUser.id);
+    }
+};
+
+// --- ПОЛУЧЕНИЕ И ОБНОВЛЕНИЕ ЛИДЕРБОРДА ---
+async function loadLeaderboard() {
+    const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('total_study_time', { ascending: false });
+
+    if (data) {
+        const board = document.getElementById('leaderboard');
+        board.innerHTML = "";
+        data.forEach(student => {
+            let statusClass = 'status-offline';
+            if (student.current_status === 'online') statusClass = 'status-online';
+            if (student.current_status === 'break') statusClass = 'status-break';
+
+            board.innerHTML += `
+                <div class="leaderboard-item">
+                    <span>
+                        <span class="status-dot ${statusClass}"></span>
+                        ${student.full_name || 'Студент'}
+                    </span>
+                    <b style="color: #a78bfa;">${student.total_study_time} с</b>
+                </div>
+            `;
+        });
+    }
+}
+
+// РЕАЛТАЙМ ПОДПИСКА НА ИЗМЕНЕНИЯ РЕЙТИНГА
+supabase
+    .channel('schema-db-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        loadLeaderboard();
+    })
+    .subscribe();
+
+// --- АВТОРИЗАЦИЯ GOOGLE ---
 async function loginWithGoogle() {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: {
-            // Эта строка исправляет 404 и ошибку редиректа
-            redirectTo: window.location.origin + window.location.pathname
-        }
+        options: { redirectTo: window.location.origin + window.location.pathname }
     });
-    if (error) { alert("Ошибка входа"); console.log(error); }
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+    loadLeaderboard();
+    
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-        trackPresence(session.user);
-        const { data } = await supabase.from('study_users').select('seconds_spent').eq('id', session.user.id).single();
-        if (data) totalSeconds = data.seconds_spent;
+        currentUser = session.user;
+        document.getElementById('googleLoginBtn').style.display = 'none';
+        document.getElementById('controls').style.display = 'block';
+        document.getElementById('welcomeMsg').innerText = `Привет, ${currentUser.user_metadata.full_name || 'Студент'}!`;
+        
+        trackPresence(currentUser);
+
+        // Получаем сохраненное время студента из базы
+        const { data } = await supabase.from('profiles').select('total_study_time').eq('id', currentUser.id).single();
+        if (data) {
+            totalSeconds = data.total_study_time;
+            document.getElementById('timerVal').innerText = totalSeconds;
+        }
     }
 
-    const btn = document.getElementById("googleLoginBtn");
-    if (btn) btn.addEventListener("click", loginWithGoogle);
+    document.getElementById("googleLoginBtn").addEventListener("click", loginWithGoogle);
 });
-
-// ---------------- FIREBASE LIKE ----------------
-window.processLike = async (id) => {
-    const docRef = doc(db, "requests", id);
-    try {
-        await updateDoc(docRef, { likes: increment(1) });
-    } catch (e) {
-        alert("Ошибка лайка");
-        console.error(e);
-    }
-};
-
-// ---------------- ADD POST (FIREBASE) ----------------
-document.getElementById('mainBtn').onclick = async () => {
-    const btn = document.getElementById('mainBtn');
-    btn.disabled = true;
-
-    try {
-        await addDoc(collection(db, "requests"), {
-            name: document.getElementById('name').value,
-            email: document.getElementById('email').value,
-            likes: 0,
-            timestamp: serverTimestamp()
-        });
-
-        document.getElementById('name').value = "";
-        document.getElementById('email').value = "";
-    } catch (e) {
-        alert("Ошибка: данные не отправлены");
-        console.error(e);
-    }
-    btn.disabled = false;
-};
-
-// ---------------- REALTIME FEED (FIREBASE) ----------------
-const q = query(collection(db, "requests"), orderBy("timestamp", "desc"));
-
-onSnapshot(q, (snapshot) => {
-    const feed = document.getElementById('feed');
-    feed.innerHTML = "";
-    snapshot.forEach((docItem) => {
-        const data = docItem.data();
-        feed.innerHTML += `
-            <div class="post">
-                <span class="time">${data.timestamp?.toDate().toLocaleTimeString() || '...'}</span>
-                <b>${data.name}</b>
-                <p style="margin: 5px 0;">${data.email}</p>
-                <button class="like-btn" onclick="processLike('${docItem.id}')">
-                    👍 ${data.likes || 0}
-                </button>
-            </div>
-        `;
-    });
-});
-
 </script>
 </body>
 </html>
