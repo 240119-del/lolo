@@ -50,6 +50,18 @@
         .online-count { color: #10b981; }
         .study-timer { color: #8b5cf6; }
 
+        /* Поля ввода */
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: #1f222e;
+            border: 1px solid #2d3142;
+            border-radius: 8px;
+            color: white;
+            box-sizing: border-box;
+        }
+
         .btn {
             background: #8b5cf6;
             color: white;
@@ -63,9 +75,15 @@
             margin-bottom: 10px;
         }
         .btn:hover { opacity: 0.9; }
-        .btn-google { background: #db4437; }
-        .btn-break { background: #ef4444; }
-        .btn-success { background: #10b981; }
+        .btn-status { background: #2d3142; border: 1px solid #3f445e; }
+        .btn-status.active { border-color: #8b5cf6; background: #8b5cf6/20; }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
 
         /* Таблица Лидерборда */
         .leaderboard-item {
@@ -84,6 +102,7 @@
         }
         .status-online { background: #10b981; }
         .status-break { background: #f59e0b; }
+        .status-busy { background: #ef4444; }
         .status-offline { background: #6b7280; }
     </style>
 </head>
@@ -91,7 +110,7 @@
 
 <div class="status-bar">
     <span class="online-count">● В сети: <span id="onlineNum">0</span></span>
-    <span class="study-timer">Таймер: <span id="timerVal">0</span> сек.</span>
+    <span class="study-timer">Таймер сессии: <span id="timerVal">0</span> сек.</span>
 </div>
 
 <div class="layout">
@@ -101,31 +120,45 @@
     </div>
 
     <div class="main-content">
-        <button id="googleLoginBtn" class="btn btn-google">Войти через Google</button>
+        <div id="authForm">
+            <h3 style="margin-top:0;">Вход / Регистрация</h3>
+            <input type="email" id="authEmail" placeholder="Твой Email">
+            <input type="password" id="authPassword" placeholder="Пароль">
+            <button id="loginBtn" class="btn">Войти</button>
+            <button id="registerBtn" class="btn" style="background: #2d3142;">Создать аккаунт</button>
+        </div>
         
-        <div id="controls" style="display: none; margin-top: 20px;">
-            <p id="welcomeMsg" style="font-size: 18px; font-weight: bold;"></p>
-            <button id="statusBtn" class="btn btn-break">Перерыв</button>
+        <div id="controls" style="display: none;">
+            <p id="welcomeMsg" style="font-size: 18px; font-weight: bold; margin-top:0;"></p>
+            
+            <div class="status-grid">
+                <button id="statusOnline" class="btn btn-status">В сети</button>
+                <button id="statusBreak" class="btn btn-status">Отошёл</button>
+                <button id="statusBusy" class="btn btn-status">Занят</button>
+                <button id="statusOffline" class="btn btn-status">Не беспокоить</button>
+            </div>
+
+            <button id="logoutBtn" class="btn" style="background: #ef4444/20; color: #ef4444;">Выйти из профиля</button>
         </div>
     </div>
 </div>
 
 <script type="module">
-// 🔥 НАСТРОЙКИ SUPABASE (Замени на свои!)
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
-const SUPABASE_URL = "https://ghlijinxmngywoyxtgzs.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdobGlqaW54bW5neXdveXh0Z3pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3ODQ0OTIsImV4cCI6MjA5MTM2MDQ5Mn0.cocCcMcygzKHqeHx9QaFsdaahUcS8mTKXGq9qBiUH6k";
+
+// СЮДА ТЫ ВСТАВЛЯЕШЬ СВОИ ДАННЫЕ ИЗ SUPABASE (Settings -> API)
+const SUPABASE_URL = "https://igkztilwhrzpussrrfel.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlna3p0aWx3aHJ6cHVzc3JyZmVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NTUxNTcsImV4cCI6MjA5MjMzMTE1N30.IsXOhmEni9LlWtTwcMLRDdXAYwZpcjIDh3wc3EQnyJo";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let totalSeconds = 0;
-let isBreak = false;
+let currentStatus = 'offline';
 let currentUser = null;
 
-// --- ТРЕКИНГ ПРИСУТСТВИЯ (REALTIME) ---
+// --- ТРЕКИНГ ОНЛАЙНА ЧЕРЕЗ PRESENCE ---
 async function trackPresence(user) {
     const channel = supabase.channel('online-users');
-    
     channel
         .on('presence', { event: 'sync' }, () => {
             const state = channel.presenceState();
@@ -138,64 +171,53 @@ async function trackPresence(user) {
         });
 }
 
-// --- ЛОГИКА ТАЙМЕРА ---
+// --- СЕКУНДОМЕР ---
 setInterval(async () => {
-    if (currentUser && !isBreak) {
+    if (currentUser && currentStatus === 'online') {
         totalSeconds++;
         document.getElementById('timerVal').innerText = totalSeconds;
         
-        // Каждые 10 секунд сохраняем прогресс в базу данных
         if (totalSeconds % 10 === 0) {
             await supabase.from('profiles').upsert({ 
                 id: currentUser.id, 
-                full_name: currentUser.user_metadata.full_name || currentUser.email,
+                full_name: currentUser.email.split('@')[0], // Имя из почты
                 total_study_time: totalSeconds,
-                current_status: 'online'
+                current_status: currentStatus
             });
         }
     }
 }, 1000);
 
-// --- ОБНОВЛЕНИЕ СТАТУСА (ПЕРЕРЫВ / ПРОДОЛЖИТЬ) ---
-document.getElementById('statusBtn').onclick = async () => {
-    isBreak = !isBreak;
-    const btn = document.getElementById('statusBtn');
-    const newStatus = isBreak ? 'break' : 'online';
+// --- ИЗМЕНЕНИЕ СТАТУСОВ ---
+async function changeStatus(newStatus) {
+    currentStatus = newStatus;
+    document.querySelectorAll('.btn-status').forEach(b => b.classList.remove('active'));
     
-    if (isBreak) {
-        btn.innerText = "Продолжить усердно учиться";
-        btn.className = "btn btn-success";
-    } else {
-        btn.innerText = "Перерыв";
-        btn.className = "btn btn-break";
-    }
-
-    if (currentUser) {
+    if(currentUser) {
         await supabase.from('profiles').update({ current_status: newStatus }).eq('id', currentUser.id);
     }
-};
+}
 
-// --- ПОЛУЧЕНИЕ И ОБНОВЛЕНИЕ ЛИДЕРБОРДА ---
+document.getElementById('statusOnline').onclick = () => changeStatus('online');
+document.getElementById('statusBreak').onclick = () => changeStatus('break');
+document.getElementById('statusBusy').onclick = () => changeStatus('busy');
+document.getElementById('statusOffline').onclick = () => changeStatus('offline');
+
+// --- ЛИДЕРБОРД ---
 async function loadLeaderboard() {
-    const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('total_study_time', { ascending: false });
-
+    const { data } = await supabase.from('profiles').select('*').order('total_study_time', { ascending: false });
     if (data) {
         const board = document.getElementById('leaderboard');
         board.innerHTML = "";
         data.forEach(student => {
-            let statusClass = 'status-offline';
-            if (student.current_status === 'online') statusClass = 'status-online';
-            if (student.current_status === 'break') statusClass = 'status-break';
+            let sClass = 'status-offline';
+            if (student.current_status === 'online') sClass = 'status-online';
+            if (student.current_status === 'break') sClass = 'status-break';
+            if (student.current_status === 'busy') sClass = 'status-busy';
 
             board.innerHTML += `
                 <div class="leaderboard-item">
-                    <span>
-                        <span class="status-dot ${statusClass}"></span>
-                        ${student.full_name || 'Студент'}
-                    </span>
+                    <span><span class="status-dot ${sClass}"></span>${student.full_name}</span>
                     <b style="color: #a78bfa;">${student.total_study_time} с</b>
                 </div>
             `;
@@ -203,43 +225,51 @@ async function loadLeaderboard() {
     }
 }
 
-// РЕАЛТАЙМ ПОДПИСКА НА ИЗМЕНЕНИЯ РЕЙТИНГА
-supabase
-    .channel('schema-db-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        loadLeaderboard();
-    })
-    .subscribe();
+// СЛУШАЕМ ИЗМЕНЕНИЯ БАЗЫ В РЕАЛЬНОМ ВРЕМЕНИ
+supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+    loadLeaderboard();
+}).subscribe();
 
-// --- АВТОРИЗАЦИЯ GOOGLE ---
-async function loginWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.origin + window.location.pathname }
-    });
-}
+// --- КНОПКИ АВТОРИЗАЦИИ (БЕЗ GOOGLE) ---
+document.getElementById('registerBtn').onclick = async () => {
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) alert(error.message); else alert("Регистрация успешна! Проверь почту для подтверждения.");
+};
 
+document.getElementById('loginBtn').onclick = async () => {
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) alert(error.message); else location.reload();
+};
+
+document.getElementById('logoutBtn').onclick = async () => {
+    await supabase.auth.signOut();
+    location.reload();
+};
+
+// --- СТАРТ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ ---
 window.addEventListener("DOMContentLoaded", async () => {
     loadLeaderboard();
-    
     const { data: { session } } = await supabase.auth.getSession();
+    
     if (session) {
         currentUser = session.user;
-        document.getElementById('googleLoginBtn').style.display = 'none';
+        document.getElementById('authForm').style.display = 'none';
         document.getElementById('controls').style.display = 'block';
-        document.getElementById('welcomeMsg').innerText = `Привет, ${currentUser.user_metadata.full_name || 'Студент'}!`;
+        document.getElementById('welcomeMsg').innerText = `Студент: ${currentUser.email}`;
         
         trackPresence(currentUser);
 
-        // Получаем сохраненное время студента из базы
-        const { data } = await supabase.from('profiles').select('total_study_time').eq('id', currentUser.id).single();
+        const { data } = await supabase.from('profiles').select('total_study_time, current_status').eq('id', currentUser.id).single();
         if (data) {
             totalSeconds = data.total_study_time;
+            currentStatus = data.current_status;
             document.getElementById('timerVal').innerText = totalSeconds;
         }
     }
-
-    document.getElementById("googleLoginBtn").addEventListener("click", loginWithGoogle);
 });
 </script>
 </body>
