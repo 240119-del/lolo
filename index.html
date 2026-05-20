@@ -50,18 +50,6 @@
         .online-count { color: #10b981; }
         .study-timer { color: #8b5cf6; }
 
-        /* Поля ввода */
-        input {
-            width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            background: #1f222e;
-            border: 1px solid #2d3142;
-            border-radius: 8px;
-            color: white;
-            box-sizing: border-box;
-        }
-
         .btn {
             background: #8b5cf6;
             color: white;
@@ -76,7 +64,7 @@
         }
         .btn:hover { opacity: 0.9; }
         .btn-status { background: #2d3142; border: 1px solid #3f445e; }
-        .btn-status.active { border-color: #8b5cf6; background: #8b5cf6/20; }
+        .btn-status.active { border-color: #8b5cf6; background: rgba(139, 92, 246, 0.2); }
         
         .status-grid {
             display: grid;
@@ -85,7 +73,6 @@
             margin-bottom: 20px;
         }
 
-        /* Таблица Лидерборда */
         .leaderboard-item {
             display: flex;
             justify-content: space-between;
@@ -104,6 +91,28 @@
         .status-break { background: #f59e0b; }
         .status-busy { background: #ef4444; }
         .status-offline { background: #6b7280; }
+        
+        .google-btn-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            margin-bottom: 15px;
+        }
+        
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #1f222e;
+        }
     </style>
 </head>
 <body>
@@ -120,16 +129,20 @@
     </div>
 
     <div class="main-content">
-        <div id="authForm">
-            <h3 style="margin-top:0;">Вход / Регистрация</h3>
-            <input type="email" id="authEmail" placeholder="Твой Email">
-            <input type="password" id="authPassword" placeholder="Пароль">
-            <button id="loginBtn" class="btn">Войти</button>
-            <button id="registerBtn" class="btn" style="background: #2d3142;">Создать аккаунт</button>
+        <div id="authSection">
+            <h3 style="margin-top:0; text-align: center;">Добро пожаловать в Study Monitor Pro</h3>
+            <p style="text-align: center; color: #9ca3af; margin-bottom: 25px;">Войдите с помощью Google, чтобы продолжить</p>
+            <div class="google-btn-container">
+                <div id="googleButton"></div>
+            </div>
         </div>
         
         <div id="controls" style="display: none;">
-            <p id="welcomeMsg" style="font-size: 18px; font-weight: bold; margin-top:0;"></p>
+            <div class="user-info">
+                <img id="userAvatar" class="user-avatar" src="" alt="Avatar">
+                <p id="welcomeMsg" style="font-size: 18px; font-weight: bold; margin: 10px 0 5px 0;"></p>
+                <p id="userEmail" style="color: #9ca3af; margin: 0;"></p>
+            </div>
             
             <div class="status-grid">
                 <button id="statusOnline" class="btn btn-status">В сети</button>
@@ -138,16 +151,16 @@
                 <button id="statusOffline" class="btn btn-status">Не беспокоить</button>
             </div>
 
-            <button id="logoutBtn" class="btn" style="background: #ef4444/20; color: #ef4444;">Выйти из профиля</button>
+            <button id="logoutBtn" class="btn" style="background: rgba(239, 68, 68, 0.2); color: #ef4444;">Выйти из профиля</button>
         </div>
     </div>
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm"
 
-// СЮДА ТЫ ВСТАВЛЯЕШЬ СВОИ ДАННЫЕ ИЗ SUPABASE (Settings -> API)
-const SUPABASE_URL = "https://igkztilwhrzpussrrfel.supabase.co/rest/v1";
+const SUPABASE_URL = "https://igkztilwhrzpussrrfel.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlna3p0aWx3aHJ6cHVzc3JyZmVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NTUxNTcsImV4cCI6MjA5MjMzMTE1N30.IsXOhmEni9LlWtTwcMLRDdXAYwZpcjIDh3wc3EQnyJo";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -155,6 +168,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let totalSeconds = 0;
 let currentStatus = 'offline';
 let currentUser = null;
+let studyInterval = null;
 
 // --- ТРЕКИНГ ОНЛАЙНА ЧЕРЕЗ PRESENCE ---
 async function trackPresence(user) {
@@ -171,22 +185,29 @@ async function trackPresence(user) {
         });
 }
 
-// --- СЕКУНДОМЕР ---
-setInterval(async () => {
-    if (currentUser && currentStatus === 'online') {
-        totalSeconds++;
-        document.getElementById('timerVal').innerText = totalSeconds;
-        
-        if (totalSeconds % 10 === 0) {
-            await supabase.from('profiles').upsert({ 
-                id: currentUser.id, 
-                full_name: currentUser.email.split('@')[0], // Имя из почты
-                total_study_time: totalSeconds,
-                current_status: currentStatus
-            });
+// --- СЕКУНДОМЕР (только если статус online) ---
+function startStudyTimer() {
+    if (studyInterval) clearInterval(studyInterval);
+    
+    studyInterval = setInterval(async () => {
+        if (currentUser && currentStatus === 'online') {
+            totalSeconds++;
+            document.getElementById('timerVal').innerText = totalSeconds;
+            
+            // Сохраняем в базу каждые 10 секунд
+            if (totalSeconds % 10 === 0) {
+                await supabase.from('profiles').upsert({ 
+                    id: currentUser.id, 
+                    full_name: currentUser.user_metadata?.full_name || currentUser.email.split('@')[0],
+                    avatar_url: currentUser.user_metadata?.avatar_url || '',
+                    total_study_time: totalSeconds,
+                    current_status: currentStatus,
+                    updated_at: new Date()
+                });
+            }
         }
-    }
-}, 1000);
+    }, 1000);
+}
 
 // --- ИЗМЕНЕНИЕ СТАТУСОВ ---
 async function changeStatus(newStatus) {
@@ -195,17 +216,13 @@ async function changeStatus(newStatus) {
     
     if(currentUser) {
         await supabase.from('profiles').update({ current_status: newStatus }).eq('id', currentUser.id);
+        await loadLeaderboard();
     }
 }
 
-document.getElementById('statusOnline').onclick = () => changeStatus('online');
-document.getElementById('statusBreak').onclick = () => changeStatus('break');
-document.getElementById('statusBusy').onclick = () => changeStatus('busy');
-document.getElementById('statusOffline').onclick = () => changeStatus('offline');
-
 // --- ЛИДЕРБОРД ---
 async function loadLeaderboard() {
-    const { data } = await supabase.from('profiles').select('*').order('total_study_time', { ascending: false });
+    const { data } = await supabase.from('profiles').select('*').order('total_study_time', { ascending: false }).limit(20);
     if (data) {
         const board = document.getElementById('leaderboard');
         board.innerHTML = "";
@@ -217,58 +234,122 @@ async function loadLeaderboard() {
 
             board.innerHTML += `
                 <div class="leaderboard-item">
-                    <span><span class="status-dot ${sClass}"></span>${student.full_name}</span>
-                    <b style="color: #a78bfa;">${student.total_study_time} с</b>
+                    <span><span class="status-dot ${sClass}"></span>${student.full_name || student.email || 'Студент'}</span>
+                    <b style="color: #a78bfa;">${Math.floor(student.total_study_time / 60)} мин ${student.total_study_time % 60} с</b>
                 </div>
             `;
         });
     }
 }
 
-// СЛУШАЕМ ИЗМЕНЕНИЯ БАЗЫ В РЕАЛЬНОМ ВРЕМЕНИ
-supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-    loadLeaderboard();
-}).subscribe();
+// --- ЗАГРУЗКА ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ ---
+async function loadUserProfile() {
+    if (!currentUser) return;
+    
+    const { data } = await supabase.from('profiles').select('total_study_time, current_status').eq('id', currentUser.id).single();
+    if (data) {
+        totalSeconds = data.total_study_time || 0;
+        currentStatus = data.current_status || 'offline';
+        document.getElementById('timerVal').innerText = totalSeconds;
+        
+        // Активируем нужную кнопку статуса
+        document.querySelectorAll('.btn-status').forEach(btn => btn.classList.remove('active'));
+        if (currentStatus === 'online') document.getElementById('statusOnline')?.classList.add('active');
+        if (currentStatus === 'break') document.getElementById('statusBreak')?.classList.add('active');
+        if (currentStatus === 'busy') document.getElementById('statusBusy')?.classList.add('active');
+        if (currentStatus === 'offline') document.getElementById('statusOffline')?.classList.add('active');
+    }
+}
 
-// --- КНОПКИ АВТОРИЗАЦИИ (БЕЗ GOOGLE) ---
-document.getElementById('registerBtn').onclick = async () => {
-    const email = document.getElementById('authEmail').value;
-    const password = document.getElementById('authPassword').value;
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) alert(error.message); else alert("Регистрация успешна! Проверь почту для подтверждения.");
-};
-
-document.getElementById('loginBtn').onclick = async () => {
-    const email = document.getElementById('authEmail').value;
-    const password = document.getElementById('authPassword').value;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) alert(error.message); else location.reload();
-};
-
-document.getElementById('logoutBtn').onclick = async () => {
+// --- ВЫХОД ---
+async function logout() {
     await supabase.auth.signOut();
     location.reload();
-};
+}
+
+// --- ИНИЦИАЛИЗАЦИЯ ПОСЛЕ ВХОДА ---
+async function initUserSession(session) {
+    currentUser = session.user;
+    
+    // Показываем controls, скрываем authSection
+    document.getElementById('authSection').style.display = 'none';
+    document.getElementById('controls').style.display = 'block';
+    
+    // Заполняем информацию о пользователе
+    document.getElementById('welcomeMsg').innerText = currentUser.user_metadata?.full_name || currentUser.email.split('@')[0];
+    document.getElementById('userEmail').innerText = currentUser.email;
+    if (currentUser.user_metadata?.avatar_url) {
+        document.getElementById('userAvatar').src = currentUser.user_metadata.avatar_url;
+    }
+    
+    await trackPresence(currentUser);
+    await loadUserProfile();
+    startStudyTimer();
+    await loadLeaderboard();
+}
+
+// --- НАСТРОЙКА GOOGLE LOGIN ---
+function setupGoogleLogin() {
+    if (!window.google) {
+        setTimeout(setupGoogleLogin, 100);
+        return;
+    }
+    
+    window.google.accounts.id.initialize({
+        client_id: "1072145910606-1v6n6r6v1v6n6r6v1v6n6r6v1v6n6r6v.apps.googleusercontent.com",
+        callback: async (response) => {
+            const { data, error } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: response.credential
+            });
+            
+            if (error) {
+                console.error("Ошибка входа:", error);
+                alert("Ошибка входа через Google: " + error.message);
+                return;
+            }
+            
+            if (data.session) {
+                await initUserSession(data.session);
+            }
+        }
+    });
+    
+    window.google.accounts.id.renderButton(
+        document.getElementById("googleButton"),
+        { 
+            theme: "filled_blue", 
+            size: "large",
+            text: "signin_with",
+            shape: "rectangular",
+            width: 250
+        }
+    );
+}
+
+// --- СЛУШАЕМ ИЗМЕНЕНИЯ БАЗЫ В РЕАЛЬНОМ ВРЕМЕНИ ---
+supabase.channel('db-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        if (currentUser) loadLeaderboard();
+    })
+    .subscribe();
+
+// --- ПРИВЯЗКА ОБРАБОТЧИКОВ КНОПОК ---
+document.getElementById('statusOnline').onclick = () => changeStatus('online');
+document.getElementById('statusBreak').onclick = () => changeStatus('break');
+document.getElementById('statusBusy').onclick = () => changeStatus('busy');
+document.getElementById('statusOffline').onclick = () => changeStatus('offline');
+document.getElementById('logoutBtn').onclick = logout;
 
 // --- СТАРТ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ ---
 window.addEventListener("DOMContentLoaded", async () => {
-    loadLeaderboard();
-    const { data: { session } } = await supabase.auth.getSession();
+    await loadLeaderboard();
+    setupGoogleLogin();
     
+    // Проверяем, есть ли уже активная сессия
+    const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-        currentUser = session.user;
-        document.getElementById('authForm').style.display = 'none';
-        document.getElementById('controls').style.display = 'block';
-        document.getElementById('welcomeMsg').innerText = `Студент: ${currentUser.email}`;
-        
-        trackPresence(currentUser);
-
-        const { data } = await supabase.from('profiles').select('total_study_time, current_status').eq('id', currentUser.id).single();
-        if (data) {
-            totalSeconds = data.total_study_time;
-            currentStatus = data.current_status;
-            document.getElementById('timerVal').innerText = totalSeconds;
-        }
+        await initUserSession(session);
     }
 });
 </script>
